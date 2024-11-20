@@ -1,116 +1,62 @@
 import logging
 import pandas as pd
-import azure.functions as func
-import os
+import tkinter as tk
+from tkinter import filedialog
 from io import BytesIO
+import warnings
 
-def append_comments_to_tracking_sheet(excel_file):
-    # Load the Excel file into a BytesIO object
-    xls = pd.ExcelFile(BytesIO(excel_file))
-
-    # Load the relevant sheets into DataFrames
-    supplier_tracking_df = pd.read_excel(xls, sheet_name='Supplier Enablement Tracking Sh')
-    comments_df = pd.read_excel(xls, sheet_name='Comments')
-
-    # Extract and reorder columns from the Comments sheet (D, C, B)
-    reordered_comments = comments_df.iloc[:, [3, 2, 1]]  # Reorder D, C, B as columns
-
-    # Loop through each row and append the reorganized comment to the corresponding row
-    for index, row in reordered_comments.iterrows():
-        supplier_index = index + 1  # Offset by 1 as per instruction
-        comment_text = ' '.join(row.dropna().astype(str))  # Join non-null values as string
-        
-        if supplier_index < len(supplier_tracking_df):
-            # Append the comment to the existing comments in column U
-            existing_comment = supplier_tracking_df.at[supplier_index, 'Comments'] if pd.notna(supplier_tracking_df.at[supplier_index, 'Comments']) else ''
-            supplier_tracking_df.at[supplier_index, 'Comments'] = existing_comment + ' ' + comment_text
-
-    # Save the updated Supplier Enablement Tracking Sheet to a BytesIO object
-    output = BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    supplier_tracking_df.to_excel(writer, index=False)
-    writer.save()
-    output.seek(0)
-    
-    return output
-
-def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Processing Excel file.')
-
-    # Ensure the request is a POST with a file
+def append_comments_to_tracking_sheet():
     try:
-        # Get the uploaded file
-        file_bytes = req.get_body()
+        # Create and hide the tkinter root window
+        root = tk.Tk()
+        root.withdraw()
 
-        # Process the Excel file
-        updated_excel = append_comments_to_tracking_sheet(file_bytes)
-
-        # Create a response with the updated file
-        return func.HttpResponse(
-            updated_excel.getvalue(),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                'Content-Disposition': 'attachment; filename=Updated_Supplier_Enablement_Tracking_Sheet.xlsx'
-            }
+        # Open file selection dialog
+        input_file = filedialog.askopenfilename(
+            title="Select Excel file",
+            filetypes=[("Excel files", "*.xlsx")]
         )
-    except Exception as e:
-        logging.error(f"Error processing file: {str(e)}")
-        return func.HttpResponse(f"An error occurred: {str(e)}", status_code=500)
-import logging
-import pandas as pd
-import azure.functions as func
-import os
-from io import BytesIO
-
-def append_comments_to_tracking_sheet(excel_file):
-    # Load the Excel file into a BytesIO object
-    xls = pd.ExcelFile(BytesIO(excel_file))
-
-    # Load the relevant sheets into DataFrames
-    supplier_tracking_df = pd.read_excel(xls, sheet_name='Supplier Enablement Tracking Sh')
-    comments_df = pd.read_excel(xls, sheet_name='Comments')
-
-    # Extract and reorder columns from the Comments sheet (D, C, B)
-    reordered_comments = comments_df.iloc[:, [3, 2, 1]]  # Reorder D, C, B as columns
-
-    # Loop through each row and append the reorganized comment to the corresponding row
-    for index, row in reordered_comments.iterrows():
-        supplier_index = index + 1  # Offset by 1 as per instruction
-        comment_text = ' '.join(row.dropna().astype(str))  # Join non-null values as string
         
-        if supplier_index < len(supplier_tracking_df):
-            # Append the comment to the existing comments in column U
-            existing_comment = supplier_tracking_df.at[supplier_index, 'Comments'] if pd.notna(supplier_tracking_df.at[supplier_index, 'Comments']) else ''
-            supplier_tracking_df.at[supplier_index, 'Comments'] = existing_comment + ' ' + comment_text
+        if not input_file:
+            tk.messagebox.showinfo("Info", "No file selected")
+            return
 
-    # Save the updated Supplier Enablement Tracking Sheet to a BytesIO object
-    output = BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    supplier_tracking_df.to_excel(writer, index=False)
-    writer.save()
-    output.seek(0)
-    
-    return output
+        try:
+            # Load the Excel file
+            xls = pd.ExcelFile(input_file)
+            supplier_tracking_df = pd.read_excel(xls, sheet_name='Supplier Enablement Tracking Sh')
+            comments_df = pd.read_excel(xls, sheet_name='Comments')
+        except Exception as e:
+            tk.messagebox.showerror("Error", f"Error reading Excel file:\n{str(e)}")
+            return
 
-def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Processing Excel file.')
+        # Extract and reorder columns from the Comments sheet (D, C, B)
+        reordered_comments = comments_df.iloc[:, [3, 2, 1]]  # Reorder D, C, B as columns
 
-    # Ensure the request is a POST with a file
-    try:
-        # Get the uploaded file
-        file_bytes = req.get_body()
+        # Loop through each row and append the reorganized comment to the corresponding row
+        for index, row in reordered_comments.iterrows():
+            supplier_index = index + 1  # Offset by 1 as per instruction
+            comment_text = ' '.join(row.dropna().astype(str))  # Join non-null values as string
+            
+            if supplier_index < len(supplier_tracking_df):
+                # Append the comment to the existing comments in column U
+                existing_comment = supplier_tracking_df.at[supplier_index, 'Comments'] if pd.notna(supplier_tracking_df.at[supplier_index, 'Comments']) else ''
+                supplier_tracking_df.at[supplier_index, 'Comments'] = existing_comment + ' ' + comment_text
 
-        # Process the Excel file
-        updated_excel = append_comments_to_tracking_sheet(file_bytes)
+        # Ask user where to save the output file
+        if output_file := filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx")],
+            title="Save Updated Excel File"
+        ):
+            # Suppress openpyxl warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                supplier_tracking_df.to_excel(output_file, index=False)
+            tk.messagebox.showinfo("Success", f"File saved successfully to:\n{output_file}")
 
-        # Create a response with the updated file
-        return func.HttpResponse(
-            updated_excel.getvalue(),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                'Content-Disposition': 'attachment; filename=Updated_Supplier_Enablement_Tracking_Sheet.xlsx'
-            }
-        )
     except Exception as e:
-        logging.error(f"Error processing file: {str(e)}")
-        return func.HttpResponse(f"An error occurred: {str(e)}", status_code=500)
+        tk.messagebox.showerror("Error", f"An unexpected error occurred:\n{str(e)}")
+
+if __name__ == "__main__":
+    append_comments_to_tracking_sheet()
